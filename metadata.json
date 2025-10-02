@@ -1,0 +1,5 @@
+{
+  "name": "NexziChat",
+  "description": "A WhatsApp-like chat application powered by the Gemini API. Features user accounts with custom profile pictures, and the ability to add contacts by their unique UID and name.",
+  "requestFramePermissions": []
+}
