@@ -197,11 +197,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      const usersData = JSON.parse(localStorage.getItem('users_data') || '{}');
-      if (usersData[currentUser.uid]) {
-        usersData[currentUser.uid].contacts = currentUser.contacts;
-        localStorage.setItem('users_data', JSON.stringify(usersData));
-      }
+      // This effect should only sync the currentUser state to localStorage.
+      // The logic for updating the central users_data store should be in specific handlers.
     }
   }, [currentUser]);
 
@@ -350,15 +347,18 @@ const App: React.FC = () => {
     }
 
     // --- Logic ---
+    const otherUserData = usersData[uid];
+
     // Update current user (the one adding the contact)
     if (!contactExists) {
         const newContact: Contact = {
             uid,
             name: name.trim(),
-            avatarUrl: '', // No default avatar
+            avatarUrl: otherUserData.avatarUrl || '',
         };
         const updatedUser = { ...currentUser, contacts: [...currentUser.contacts, newContact] };
         setCurrentUser(updatedUser);
+        usersData[currentUser.uid].contacts = updatedUser.contacts;
     }
     
     // Ensure conversation exists for current user
@@ -374,7 +374,6 @@ const App: React.FC = () => {
     }
     
     // Symmetrically update the other user's contact list
-    const otherUserData = usersData[uid];
     if (otherUserData) {
         const otherUserContacts: Contact[] = otherUserData.contacts || [];
         const selfInOtherContacts = otherUserContacts.find(c => c.uid === currentUser.uid);
@@ -385,10 +384,10 @@ const App: React.FC = () => {
                 avatarUrl: currentUser.avatarUrl || '',
             });
             usersData[uid].contacts = otherUserContacts;
-            localStorage.setItem('users_data', JSON.stringify(usersData));
         }
     }
-
+    
+    localStorage.setItem('users_data', JSON.stringify(usersData));
     setSelectedConversationId(uid);
     setIsAddContactModalOpen(false);
   };
@@ -401,14 +400,77 @@ const App: React.FC = () => {
   };
 
   const handleUpdateAvatar = (avatarUrl: string) => {
-      setCurrentUser(prevUser => prevUser ? { ...prevUser, avatarUrl } : null);
-      setStories(prevStories => prevStories.map(story => {
-          if (story.userId === currentUser?.uid) {
-              return { ...story, userAvatarUrl: avatarUrl };
-          }
-          return story;
-      }));
+    if (!currentUser) return;
+
+    const updatedUser = { ...currentUser, avatarUrl };
+    setCurrentUser(updatedUser);
+
+    setStories(prevStories => prevStories.map(story => {
+        if (story.userId === currentUser.uid) {
+            return { ...story, userAvatarUrl: avatarUrl };
+        }
+        return story;
+    }));
+
+    const usersData = JSON.parse(localStorage.getItem('users_data') || '{}');
+    if (usersData[currentUser.uid]) {
+      usersData[currentUser.uid].avatarUrl = avatarUrl;
+    }
+
+    Object.keys(usersData).forEach(uid => {
+        if (uid !== currentUser.uid && usersData[uid].contacts) {
+            usersData[uid].contacts = usersData[uid].contacts.map((contact: Contact) => {
+                if (contact.uid === currentUser.uid) {
+                    return { ...contact, avatarUrl: avatarUrl };
+                }
+                return contact;
+            });
+        }
+    });
+
+    localStorage.setItem('users_data', JSON.stringify(usersData));
   };
+
+  const handleUpdateName = (newName: string): { success: boolean, error?: string } => {
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+        return { success: false, error: "Name cannot be empty." };
+    }
+    if (!currentUser) {
+        return { success: false, error: "No user logged in." };
+    }
+
+    const usersData = JSON.parse(localStorage.getItem('users_data') || '{}');
+    
+    const isNameTaken = Object.entries(usersData).some(
+      ([uid, user]: [string, any]) => 
+        uid !== currentUser.uid && user.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (isNameTaken) {
+        return { success: false, error: "This name is already taken." };
+    }
+
+    const updatedUser = { ...currentUser, name: trimmedName };
+    setCurrentUser(updatedUser);
+
+    usersData[currentUser.uid].name = trimmedName;
+
+    Object.keys(usersData).forEach(uid => {
+        if (uid !== currentUser.uid && usersData[uid].contacts) {
+            usersData[uid].contacts = usersData[uid].contacts.map((contact: Contact) => {
+                if (contact.uid === currentUser.uid) {
+                    return { ...contact, name: trimmedName };
+                }
+                return contact;
+            });
+        }
+    });
+
+    localStorage.setItem('users_data', JSON.stringify(usersData));
+    
+    return { success: true };
+};
 
   const handleAddStory = (imageUrl: string) => {
     if (!currentUser) return;
@@ -471,6 +533,7 @@ const App: React.FC = () => {
                   onLogout={handleLogout}
                   currentUser={currentUser}
                   onUpdateAvatar={handleUpdateAvatar}
+                  onUpdateName={handleUpdateName}
                   stories={stories}
                   onAddStory={handleAddStory}
                   onViewStories={handleViewStories}

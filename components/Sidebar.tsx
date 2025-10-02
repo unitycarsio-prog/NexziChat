@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react';
 import { Conversation, User, Story, Contact } from '../types';
 import { Avatar } from './Avatar';
 import { Stories } from './Stories';
-import { SearchIcon, MoreVertIcon, PlusIcon } from './Icons';
+import { SettingsPage } from './SettingsPage';
+import { SearchIcon, MoreVertIcon, PlusIcon, SettingsIcon } from './Icons';
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -12,6 +13,7 @@ interface SidebarProps {
   onLogout: () => void;
   currentUser: User;
   onUpdateAvatar: (avatarUrl: string) => void;
+  onUpdateName: (newName: string) => { success: boolean, error?: string };
   stories: Story[];
   onAddStory: (imageUrl: string) => void;
   onViewStories: (userId: string) => void;
@@ -20,9 +22,10 @@ interface SidebarProps {
 const SidebarHeader: React.FC<{
   onNewChat: () => void;
   onLogout: () => void;
+  onShowSettings: () => void;
   currentUser: User;
   onUpdateAvatar: (avatarUrl: string) => void;
-}> = ({ onNewChat, onLogout, currentUser, onUpdateAvatar }) => {
+}> = ({ onNewChat, onLogout, onShowSettings, currentUser, onUpdateAvatar }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -42,7 +45,7 @@ const SidebarHeader: React.FC<{
   };
 
   return (
-    <header className="bg-sky-600 p-3 flex justify-between items-center text-white relative">
+    <header className="bg-sky-600 p-3 flex justify-between items-center text-white relative flex-shrink-0">
       <div className="flex items-center">
         <button onClick={handleAvatarClick} className="rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-sky-600 focus:ring-white" title="Change profile picture">
           <Avatar src={currentUser.avatarUrl} name={currentUser.name} />
@@ -63,6 +66,9 @@ const SidebarHeader: React.FC<{
           </button>
           {menuOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 text-gray-800">
+              <a href="#" onClick={(e) => { e.preventDefault(); onShowSettings(); setMenuOpen(false); }} className="flex items-center px-4 py-2 text-sm hover:bg-gray-100">
+                <SettingsIcon className="w-5 h-5 mr-3 text-gray-600"/> Settings
+              </a>
               <a href="#" onClick={(e) => { e.preventDefault(); onLogout(); setMenuOpen(false); }} className="block px-4 py-2 text-sm hover:bg-gray-100">
                 Logout
               </a>
@@ -75,7 +81,7 @@ const SidebarHeader: React.FC<{
 };
 
 const SearchBar: React.FC = () => (
-  <div className="bg-white p-2 border-b border-gray-200">
+  <div className="bg-white p-2 border-b border-gray-200 flex-shrink-0">
     <div className="relative">
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
         <SearchIcon className="w-5 h-5 text-gray-500" />
@@ -111,14 +117,35 @@ const ConversationPreview: React.FC<{
 );
 
 type ActiveTab = 'CHATS' | 'STORIES';
+type SidebarView = 'main' | 'settings';
 
-export const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConversationId, onSelectConversation, onNewChat, onLogout, currentUser, onUpdateAvatar, stories, onAddStory, onViewStories }) => {
+export const Sidebar: React.FC<SidebarProps> = (props) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('CHATS');
+  const [sidebarView, setSidebarView] = useState<SidebarView>('main');
   
+  const { conversations, selectedConversationId, onSelectConversation, onNewChat, onLogout, currentUser, onUpdateAvatar, onUpdateName, stories, onAddStory, onViewStories } = props;
+
+  if (sidebarView === 'settings') {
+      return (
+          <SettingsPage 
+            currentUser={currentUser}
+            onUpdateAvatar={onUpdateAvatar}
+            onUpdateName={onUpdateName}
+            onBack={() => setSidebarView('main')}
+          />
+      );
+  }
+
   return (
     <div className="w-full h-full bg-white flex flex-col border-r border-gray-200">
-      <SidebarHeader onNewChat={onNewChat} onLogout={onLogout} currentUser={currentUser} onUpdateAvatar={onUpdateAvatar} />
-       <div className="flex bg-white border-b">
+      <SidebarHeader 
+        onNewChat={onNewChat} 
+        onLogout={onLogout} 
+        currentUser={currentUser} 
+        onUpdateAvatar={onUpdateAvatar} 
+        onShowSettings={() => setSidebarView('settings')}
+      />
+       <div className="flex bg-white border-b flex-shrink-0">
         <button 
           onClick={() => setActiveTab('CHATS')}
           className={`w-1/2 p-3 text-sm font-semibold transition-colors duration-300 ${activeTab === 'CHATS' ? 'text-sky-600 border-b-2 border-sky-600' : 'text-gray-500'}`}
