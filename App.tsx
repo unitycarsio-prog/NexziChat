@@ -214,7 +214,9 @@ const App: React.FC = () => {
     setSelectedConversationId(id);
   }, []);
 
-  const addMessageToConversation = (message: Message) => {
+  const addMessageToConversation = (message: Message, recipientUid: string) => {
+    if (!currentUser) return;
+
     const lastMessageText = {
         [MessageType.TEXT]: message.text,
         [MessageType.IMAGE]: '📷 Image',
@@ -223,20 +225,53 @@ const App: React.FC = () => {
         [MessageType.DOCUMENT]: '📄 Document'
     }[message.type] || '...';
 
-
-    const updatedConversations = conversations.map(convo => {
-      if (convo.id === selectedConversationId) {
-        return {
-          ...convo,
-          messages: [...convo.messages, message],
-          lastMessage: lastMessageText!,
-          lastMessageTimestamp: message.timestamp,
-        };
-      }
-      return convo;
+    // 1. Update sender's state (current user)
+    setConversations(prevConversations => {
+        return prevConversations.map(convo => {
+            if (convo.id === recipientUid) {
+                return {
+                    ...convo,
+                    messages: [...convo.messages, message],
+                    lastMessage: lastMessageText!,
+                    lastMessageTimestamp: message.timestamp,
+                };
+            }
+            return convo;
+        });
     });
-    setConversations(updatedConversations);
+    
+    // 2. Update receiver's localStorage directly to simulate message delivery
+    const receiverConvoKey = `conversations_${recipientUid}`;
+    const receiverConversationsJSON = localStorage.getItem(receiverConvoKey);
+    let receiverConversations: Conversation[] = receiverConversationsJSON ? JSON.parse(receiverConversationsJSON) : [];
+
+    const convoWithSender = receiverConversations.find(c => c.id === currentUser.uid);
+
+    if (convoWithSender) {
+        receiverConversations = receiverConversations.map(c => {
+            if (c.id === currentUser.uid) {
+                return {
+                    ...c,
+                    messages: [...c.messages, message],
+                    lastMessage: lastMessageText!,
+                    lastMessageTimestamp: message.timestamp,
+                };
+            }
+            return c;
+        });
+    } else {
+        const newReceiverConvo: Conversation = {
+            id: currentUser.uid,
+            lastMessage: lastMessageText!,
+            lastMessageTimestamp: message.timestamp,
+            messages: [message],
+        };
+        receiverConversations.push(newReceiverConvo);
+    }
+    
+    localStorage.setItem(receiverConvoKey, JSON.stringify(receiverConversations));
   }
+
 
   const handleSendMessage = useCallback((text: string) => {
     if (!selectedConversationId || !currentUser) return;
@@ -248,8 +283,8 @@ const App: React.FC = () => {
       type: MessageType.TEXT,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
-    addMessageToConversation(newMessage);
-  }, [selectedConversationId, conversations, currentUser]);
+    addMessageToConversation(newMessage, selectedConversationId);
+  }, [selectedConversationId, currentUser]);
 
   const handleSendFile = useCallback((file: File) => {
       if (!selectedConversationId || !currentUser) return;
@@ -272,11 +307,11 @@ const App: React.FC = () => {
               fileName: file.name,
               fileSize: `${(file.size / 1024).toFixed(2)} KB`
           };
-          addMessageToConversation(newMessage);
+          addMessageToConversation(newMessage, selectedConversationId);
       };
       reader.readAsDataURL(file);
 
-  }, [selectedConversationId, conversations, currentUser]);
+  }, [selectedConversationId, currentUser]);
 
 
   const handleNewChat = () => {
@@ -315,8 +350,8 @@ const App: React.FC = () => {
     }
 
     // --- Logic ---
+    // Update current user (the one adding the contact)
     if (!contactExists) {
-        // New contact, create it.
         const newContact: Contact = {
             uid,
             name: name.trim(),
@@ -326,7 +361,7 @@ const App: React.FC = () => {
         setCurrentUser(updatedUser);
     }
     
-    // Ensure conversation exists and select it.
+    // Ensure conversation exists for current user
     const conversationExists = conversations.find(c => c.id === uid);
     if (!conversationExists) {
         const newConversation: Conversation = {
@@ -338,6 +373,22 @@ const App: React.FC = () => {
         setConversations(prev => [...prev, newConversation]);
     }
     
+    // Symmetrically update the other user's contact list
+    const otherUserData = usersData[uid];
+    if (otherUserData) {
+        const otherUserContacts: Contact[] = otherUserData.contacts || [];
+        const selfInOtherContacts = otherUserContacts.find(c => c.uid === currentUser.uid);
+        if (!selfInOtherContacts) {
+            otherUserContacts.push({
+                uid: currentUser.uid,
+                name: currentUser.name, // The other user sees the current user's real name
+                avatarUrl: currentUser.avatarUrl || '',
+            });
+            usersData[uid].contacts = otherUserContacts;
+            localStorage.setItem('users_data', JSON.stringify(usersData));
+        }
+    }
+
     setSelectedConversationId(uid);
     setIsAddContactModalOpen(false);
   };
